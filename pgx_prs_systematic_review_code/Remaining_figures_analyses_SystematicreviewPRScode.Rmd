@@ -1,0 +1,915 @@
+---
+title: "Systematic review PRS code"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set()
+```
+
+## Packages
+
+These packages are required for analysis: 
+
+* tidyverse 
+* tm
+* SnowballC
+* wordcloud
+* RColorBrewer
+* cowplot
+* formattable
+* choroplethr
+* data.table
+* viridis
+* easyPubMed
+* scales
+
+```{r packages, include=FALSE}
+library(tidyverse)
+library(tm)
+library(SnowballC)
+library(wordcloud)
+library(RColorBrewer)
+library(cowplot)
+library(formattable)
+library(choroplethr)
+library(data.table)
+library(viridis)
+library(easyPubMed)
+library(scales)
+
+```
+## Import data
+
+```{r import}
+df <- read.csv(file = "C://Users//dkj201//Documents//Documents//A Canada//Dataextraction_basic.csv",
+               header = TRUE,
+               stringsAsFactors = FALSE)
+colnames(df)[1] <- "ORN"
+
+```
+
+## Plots
+
+# Number of papers by year
+
+Number of papers containing a pharmacogenetic polygenic risk score by year of publication, as of our search in February 2021. Papers published in 2021 are not represented in the figure.  
+
+```{r number_year}
+years <- df$Year
+
+years2 <- table(years)
+str(years2)
+years2 <- as.data.frame(years2)
+years3 <- years2 %>%
+  filter(years!="2021")
+
+uomcol1 <- "#345D9D" #dark blue
+uomcol2 <- "#00A0DF" #light blue
+
+years_plot <- ggplot(years3, aes(x = years, y = Freq)) + 
+  geom_bar(stat = "identity", colour = uomcol1, alpha = 0.8, fill = uomcol2,
+           size = 1) +
+  theme_bw() +
+  labs(title = "Plot of number of papers by year (as of February 2021)",
+       x = "",
+       y = "Number of papers") +
+  guides(fill = "none") +
+  scale_y_continuous(limits = c(0,20))
+years_plot
+ggsave(filename = "C://Users//dkj201//Documents//Documents//A Canada//Final figures//years.png",
+       plot = years_plot,
+       device = "png",
+       width = 20,
+       height = 15,
+       units = "cm",
+       dpi = 320)
+
+```
+# Disease area/ATC code/wordcloud
+
+Number of papers included in the systematic review classified by ICD-10 Disease area. B) Number of papers classified by ATC classification of included drugs. ATC = Anatomical Therapeutic Chemical. ICD = International Classification of Diseases.
+
+```{r demographics disease}
+# A: Disease areas stacked barplot
+disease <- data.frame(df$Disease.area, df$Year)
+disease2 <- as_tibble(disease)
+unique1 <- disease2$`df.Disease.area`
+
+disease_year <- disease2 %>% 
+  count(`df.Disease.area`, `df.Year`) %>% #adds a n count to each row
+  spread(`df.Disease.area`, n, fill = 0) %>% #fills in blanks with zeroes
+  mutate_at(vars(all_of(unique1)), cumsum) %>% #cumulative sum of each disease area
+  gather(`df.Disease.area`, N, -`df.Year`, factor_key = T) %>% #gathers disease areas together with counts, ignores Year
+  mutate(`df.Disease.area` = ordered(`df.Disease.area`, levels = rev(levels(`df.Disease.area`)))) #orders in reverse order
+disease_year$df.Disease.area <- reorder(disease_year$df.Disease.area, -disease_year$N)
+pal_disease <- brewer.pal(n = 8, "Set1")
+
+disease_plot <- ggplot(disease_year, aes(`df.Year`, N, fill = `df.Disease.area`)) +
+  geom_area(position = "stack", alpha = 0.85) +
+  theme_bw() +
+  ylab("Number of papers") +
+  xlab("Year") +
+  scale_fill_manual(values = pal_disease, name = "ICD-10 Disease Area") +
+  theme(axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 10)) +
+  scale_y_continuous(limits = c(0,55), breaks = c(0,5,10,15,20,25,30,35,40,45,50,55)) +
+  scale_x_continuous(breaks = c(2012,2014,2016,2018,2020))
+disease_plot
+
+ggsave(filename = "C://Users//dkj201//Documents//Documents//A Canada//Final figures//diseaseplot.png", plot = disease_plot,
+       device = "png",
+       width = 20,
+       height = 15,
+       units = "cm",
+       dpi = 320)
+```
+
+```{r demographics drugs}
+# B: Drug areas stacked barplot
+
+drugs2 <- data.frame(df$Intervention.area, df$Year)
+unique1 <- drugs2$df.Intervention.area
+
+drugs_year <- drugs2 %>% 
+  count(`df.Intervention.area`, `df.Year`) %>% #adds a n count to each row
+  spread(`df.Intervention.area`, n, fill = 0) %>% #fills in blanks with zeroes
+  mutate_at(vars(all_of(unique1)), cumsum) %>% #cumulative sum of each disease area
+  gather(`df.Intervention.area`, N, -`df.Year`, factor_key = T) %>% #gathers disease areas together with counts, ignores Year
+  mutate(`df.Intervention.area` = ordered(`df.Intervention.area`, levels = rev(levels(`df.Intervention.area`)))) #orders in reverse order
+
+#Change categories around
+drugs_year$df.Intervention.area <- as.character(drugs_year$df.Intervention.area)
+drugs_year$df.Intervention.area[drugs_year$df.Intervention.area == "A Alimentary tract and metabolism"] <- "Alimentary tract and Metabolism (A)"
+drugs_year$df.Intervention.area[drugs_year$df.Intervention.area == "C Cardiovascular system"] <- "Cardiovascular system (C)"
+drugs_year$df.Intervention.area[drugs_year$df.Intervention.area == "N Nervous system (inc psychiatric)"] <- "Nervous system (inc psychiatric) (N)"
+drugs_year$df.Intervention.area[drugs_year$df.Intervention.area == "V Various"] <- "Various (V)"
+drugs_year$df.Intervention.area[drugs_year$df.Intervention.area == "H Systemic hormonal preparations (not sex or insulin)"] <- "Systemic hormonal preparations (H)"
+drugs_year$df.Intervention.area[drugs_year$df.Intervention.area == "L Antineoplastic and immunomodulating"] <- "Antineoplastic and immunomodulating (L)"
+drugs_year$df.Intervention.area[drugs_year$df.Intervention.area == "J Antiinfectives for systemic use"] <- "Anti-infectives for systemic use (J)"
+
+drugs_year$df.Intervention.area <- reorder(drugs_year$df.Intervention.area, -drugs_year$N)
+
+pal_drugs <- brewer.pal(n = 8, "Set2")
+
+drugs_plot <- ggplot(drugs_year, aes(`df.Year`, N, fill = `df.Intervention.area`)) +
+  geom_area(position = "stack", alpha = 0.85) +
+  theme_bw() +
+  ylab("Number of papers") +
+  xlab("Year") +
+  scale_fill_manual(values = pal_drugs, name = "ATC code") +
+  theme(axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 10)) +
+  scale_y_continuous(limits = c(0,55), breaks = c(0,5,10,15,20,25,30,35,40,45,50,55)) +
+  scale_x_continuous(breaks = c(2012,2014,2016,2018,2020))
+drugs_plot
+
+
+ggsave(filename = "C://Users//dkj201//Documents//Documents//A Canada//Final figures//drugsplot.png", plot = drugs_plot,
+       device = "png",
+       width = 20,
+       height = 15,
+       units = "cm",
+       dpi = 320)
+```
+
+```{r demographics wordcloud}
+
+# C: Wordcloud
+
+words <- df$Drug.names
+docs <- Corpus(VectorSource(words))
+
+#Text transformation- removing special characters
+toSpace <- content_transformer(function(x, pattern) gsub(pattern, " ", x))
+docs<- tm_map(docs, toSpace, "/")
+docs<- tm_map(docs, toSpace, "@")
+docs<- tm_map(docs, toSpace, "\\|")
+
+#Cleaning text 
+excludeWords <- c("the", "containing", "specified", "others", "antipsychotics")
+#go back and edit these once final word cloud is complete
+docs <- tm_map(docs, removeNumbers)
+docs <- tm_map(docs, removeWords, stopwords("english"))
+docs <- tm_map(docs, removeWords, excludeWords)
+docs <- tm_map(docs, removePunctuation)
+docs <- tm_map(docs, stripWhitespace)
+
+#Build term document matrix
+dtm <- TermDocumentMatrix(docs)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m), decreasing = TRUE)
+d <- data.frame(word = names(v), freq=v)
+head(d, 10)
+topd <- head(d,10)
+
+
+#word cloud
+set.seed(123)
+png(filename = "C://Users//dkj201//Documents//Documents//A Canada//Final figures//drugs_wordcloud.png")
+drugs_wordcloud <- wordcloud(words = d$word, freq = d$freq, min.freq = 2, 
+          max.words = 100, random.order = TRUE, rot.per = 0.35,
+          colors = brewer.pal(8, "Dark2"), scale = c(2,1)) #may need to run a few times to find a configuration that fits
+dev.off()
+```
+
+Final figure is a combination of year_plot, disease_plot, and drugs_plot
+
+```{r final fig3}
+
+#cowplot the figures - including NULL to manage space between graphs
+combo3 <- plot_grid(years_plot, NULL, disease_plot, NULL, drugs_plot, labels = c("A", "", "B", "","C"),
+                    nrow = 1,
+                    ncol = 5,
+                    align = 'h',
+                    rel_widths = c(1, 0.1, 1, 0.1, 1))
+combo3
+ggsave(file = "C://Users//dkj201//Documents//Documents//A Canada//Final figures//combo3.png",
+       plot = combo3,
+       width = 90,
+       height = 20,
+       units = "cm",
+       dpi = 320)
+```
+# Location of first and last authors
+
+
+```{r pubmed queries}
+my_query <- '33501934  33106254 32686723 32724131 33181205 33012170 32511779 32895570 32652002 32175767 32818716 32535905 32430334 30480086 31707832 31988971 32203155 32066683 30392411 31447353 30610379 30130674 30552317 29121268 30240446 28431800 29559929 29025760 28159590 26778674 26915630 26806281 24339138 23377640 31872049 32171635 31712719 31504448 30718812 33557049 30942838 30171181 33589590 24888364 31612640 31898914 30700811 31447354 28184875 26349998 29579042'
+#not ideal but I found this works best, rather than importing the csv file
+#Copy excel cols into word as plain text, find `enter` and replace with `space`
+#copy result into my_query
+
+# submit the query to PubMed to get PubMed IDs for articles
+my_idlist <- get_pubmed_ids(my_query)
+
+my_idlist$Count #check as expected
+
+#Create an object which allows articles to be processed in batches of 70 articles
+all_steps <- seq(1, my_idlist$Count, by = 70)
+
+```
+
+#first AUTHORS EXTRACTION FROM PUBMED
+
+```{r function first authors}
+
+#Extract data from pubmed, include only first authors 
+all_author_results <- lapply(all_steps, function(i) {
+  y <- fetch_pubmed_data(pubmed_id_list = my_idlist, retmax = 70, retstart = i)  
+  yy <- table_articles_byAuth(y, included_authors = "first", getKeywords = TRUE)
+  yy[, c("pmid", "year", "jabbrv", "lastname", "firstname", "address")]
+})  
+#this will take some time
+```
+
+```{r pubmed queries 2}
+str(first_author_results) #some may be missing, will have to fill these in manually later
+
+first_author_results2 <- do.call(rbind,first_author_results)
+write.csv(first_author_results2, "C://Users//dkj201//Documents//Documents//A Canada//Final figures//first_author_results.csv", row.names=F)
+#Manually create country details in Excel for speed, and add in details of missing papers
+#copy to new sheet called first_author_results2.csv
+
+#LAST AUTHORS EXTRACTION FROM PUBMED
+
+#Extract data from pubmed, include only last authors 
+last_author_results <- lapply(all_steps, function(i) {
+  y <- fetch_pubmed_data(pubmed_id_list = my_idlist, retmax = 70, retstart = i)  
+  yy <- table_articles_byAuth(y, included_authors = "last", getKeywords = TRUE)
+  yy[, c("pmid", "year", "jabbrv", "lastname", "firstname", "address")]
+})  
+#this will take some time
+
+str(last_author_results) #some may be missing, will have to fill these in manually later
+
+last_author_results2 <- do.call(rbind,last_author_results)
+write.csv(last_author_results2, "C://Users//dkj201//Documents//Documents//A Canada//Final figures//last_author_results.csv", row.names=F)
+#Manually create country details in Excel for speed, and add in details of missing papers
+#copy to new sheet called last_author_results2.csv
+
+```
+
+# Plotting locations of first and last authors
+
+Location of A) first authors and B) last authors of the 51 papers included in our analysis. 
+
+```{r plotting locations first authors}
+#first AUTHORS
+
+first_authors <- fread("C://Users//dkj201//Documents//Documents//A Canada//Final figures//first_author_results2.csv") #extracted from written sheet above
+
+#Need to change the following countries
+#bahrain, barbados, brunei darussalam, congo, faroe islands, hong kong, malta, 
+#puerto rico, republic of macedonia, scotland, serbia, singapore, state of palestine, 
+#syrian arab republic, n arab republic, tanzania
+#Don't have any of these so can proceed without this step
+
+#Countries not included
+#andorra, bahrain, barbados, faroe islands, hong kong, puerto rico, singapore,state of palestine
+
+#create counts
+first_authors_count <- first_authors %>%
+  count(pmid, lastname, allname)
+
+
+#merge two files
+first_authors_merge <- first_authors %>%
+  left_join(first_authors_count, by = c("pmid", "lastname", "firstname"))
+
+
+#add weight column to each affiliation - these are just 1 for ours
+first_authors_merge$weight <- (1/first_authors_merge$n)
+
+
+#create tables with weighted counts of countries
+first_authors_countries <- aggregate(weight ~ country, first_authors_merge, sum)
+
+
+#Rename all cols, make all countries lower case, value to numeric
+colnames(first_authors_countries) <-c("region","value")
+first_authors_countries <- data.frame(apply(first_authors_countries,2,tolower))
+first_authors_countries$value <- as.numeric(first_authors_countries$value)
+levels(first_authors_countries$region)[levels(first_authors_countries$region) == "united states"] <- "united states of america"
+levels(first_authors_countries$region)[levels(first_authors_countries$region) == "the netherlands"] <- "netherlands"
+
+#plot
+first_authors_plot <- country_choropleth(first_authors_countries, title = "Location of first authors", 
+                                         num_colors = 1) + 
+  scale_fill_continuous(low="#eff3ff", high="#084594", na.value="seashell", limits = c(0,8),
+                        name = "first Authors") +
+  theme(plot.title = element_text(hjust = 0.5))
+#warnings here are just for countries without data
+
+first_authors_plot
+ggsave(
+  filename = "C://Users//dkj201//Documents//Documents//A Canada//Final figures//first_authors_plot.png",
+  plot = first_authors_plot,
+  device = "png")
+
+
+#crop off antarctica and white space manually
+```
+
+```{r plotting locations last authors}
+
+#last AUTHORS
+
+last_authors <- fread("C://Users//dkj201//Documents//Documents//A Canada//Final figures//last_author_results2.csv") #extracted from written sheet above
+
+#Need to change the following countries
+#bahrain, barbados, brunei darussalam, congo, faroe islands, hong kong, malta, 
+#puerto rico, republic of macedonia, scotland, serbia, singapore, state of palestine, 
+#syrian arab republicn arab republic, tanzania
+#Don't have any of these so can proceed without this step
+
+#Countries not included
+#andorra, bahrain, barbados, faroe islands, hong kong, puerto rico, singapore,state of palestine
+
+#create counts
+last_authors_count <- last_authors %>%
+  count(pmid, lastname, firstname)
+
+#merge two files
+last_authors_merge <- last_authors %>%
+  left_join(last_authors_count, by = c("pmid", "lastname", "firstname"))
+
+#add weight column to each affiliation - these are just 1 for ours
+last_authors_merge$weight <- (1/last_authors_merge$n)
+
+#create tables with weighted counts of countries
+last_authors_countries <- aggregate(weight ~ country, last_authors_merge, sum)
+
+#Rename all cols, make all countries lower case, value to numeric
+colnames(last_authors_countries) <-c("region","value")
+last_authors_countries <- data.frame(apply(last_authors_countries,2,tolower))
+last_authors_countries$value <- as.numeric(last_authors_countries$value)
+levels(last_authors_countries$region)[levels(last_authors_countries$region) == "united states"] <- "united states of america"
+levels(last_authors_countries$region)[levels(last_authors_countries$region) == "the netherlands"] <- "netherlands"
+
+
+#plot
+last_authors_plot <- country_choropleth(last_authors_countries, title = "Location of last authors", 
+                                         num_colors = 1) + 
+  scale_fill_continuous(low="#eff3ff", high="#084594", na.value="seashell", limits = c(0,8),
+                        name = "Authors") +
+  theme(plot.title = element_text(hjust = 0.5))
+#warnings here are just for countries without data
+
+last_authors_plot
+ggsave(
+  filename = "C://Users//dkj201//Documents//Documents//A Canada//Final figures//last_authors_plot.png",
+  plot = last_authors_plot,
+  device = "png")
+
+
+#crop off antarctica and white space manually
+```
+
+# Plotting locations of all and last authors - combined
+
+Location of all and last authors of the 51 papers included in our analysis. 
+
+```{r plotting locations all authors}
+#ALL AUTHORS
+
+all_authors <- fread("C://Users//dkj201//Documents//Documents//A Canada//Final figures//all_author_results.csv") #extracted from written sheet above
+
+#Need to change the following countries
+#bahrain, barbados, brunei darussalam, congo, faroe islands, hong kong, malta, 
+#puerto rico, republic of macedonia, scotland, serbia, singapore, state of palestine, 
+#syrian arab republic, n arab republic, tanzania
+#Don't have any of these so can proceed without this step
+
+#Countries not included
+#andorra, bahrain, barbados, faroe islands, hong kong, puerto rico, singapore,state of palestine
+
+#create counts
+all_authors_count <- all_authors %>%
+  count(pmid, lastname, firstname)
+
+#merge two files
+all_authors_merge <- all_authors %>%
+  left_join(all_authors_count, by = c("pmid", "lastname", "firstname"))
+
+
+#add weight column to each affiliation
+all_authors_merge$weight <- (1/all_authors_merge$n)
+all_authors_countries <- all_authors_merge %>%
+  select(country)
+
+all_authors_countries2 <- data.frame(table(all_authors_countries))
+
+
+#create tables with weighted counts of countries
+all_authors_countries <- aggregate(weight ~ country, all_authors_merge, sum)
+
+
+#Rename all cols, make all countries lower case, value to numeric
+colnames(all_authors_countries2) <-c("region","value")
+all_authors_countries2$region <- tolower(all_authors_countries2$region)
+levels(all_authors_countries2$region)[levels(all_authors_countries2$region) == "united states"] <- "united states of america"
+levels(all_authors_countries2$region)[levels(all_authors_countries2$region) == "the netherlands"] <- "netherlands"
+
+#plot
+all_authors_plot <- country_choropleth(all_authors_countries2, title = "Location of authors", 
+                                         num_colors = 1) + 
+  scale_fill_continuous(low="#eff3ff", high="#084594", na.value="seashell", 
+                        name = "Authors",
+                        limits = c(0,30)) + 
+  theme(plot.title = element_text(hjust = 0.5)) 
+  
+#warnings here are just for countries without data
+
+all_authors_plot
+ggsave(
+  filename = "C://Users//dkj201//Documents//Documents//A Canada//Final figures//all_authors_plot.png",
+  plot = all_authors_plot,
+  device = "png")
+
+
+#crop off antarctica and white space manually
+```
+# Tables of author locations
+
+```{r location_tables_all}
+#first authors
+first_authors2 <- first_authors %>%
+  select(country)
+
+
+first_authors2 <- as.data.frame(table(first_authors2))
+
+colnames(first_authors2) <- c("Country", "Frequency")
+
+customBlue <- "#acb9ca"
+customBlue0 <- "#b4c0cf"
+
+first_authors2 <- arrange(first_authors2, desc(Frequency))
+first_authors2$Country <- as.character(first_authors2$Country)
+first_authors2[first_authors2 == "united states of america"] <- "USA"
+first_authors2[first_authors2 == "netherlands"] <- "The Netherlands"
+first_authors_table <- formattable(first_authors2,
+            list(
+              `Frequency` = color_bar(customBlue)
+            ))
+first_authors_table
+
+#last authors
+last_authors2 <- last_authors %>%
+  select(country)
+
+last_authors2 <- as.data.frame(table(last_authors2))
+
+colnames(last_authors2) <- c("Country", "Frequency")
+
+customBlue <- "#acb9ca"
+customBlue0 <- "#b4c0cf"
+
+last_authors2 <- arrange(last_authors2, desc(Frequency))
+last_authors2$Country <- as.character(last_authors2$Country)
+last_authors2[last_authors2 == "united states of america"] <- "USA"
+last_authors2[last_authors2 == "netherlands"] <- "The Netherlands"
+last_authors_table <- formattable(last_authors2,
+            list(
+              `Frequency` = color_bar(customBlue)
+            ))
+last_authors_table
+                   
+#ALL authors
+all_authors2 <- all_authors %>%
+  select(country)
+
+all_authors2 <- as.data.frame(table(all_authors2))
+
+colnames(all_authors2) <- c("Country", "Frequency")
+
+customBlue <- "#acb9ca"
+customBlue0 <- "#b4c0cf"
+
+all_authors2 <- arrange(all_authors2, desc(Frequency))
+all_authors2$Country <- as.character(all_authors2$Country)
+all_authors2[all_authors2 == "united states"] <- "USA"
+all_authors2[all_authors2 == "united kingdom"] <- "United Kingdom"
+all_authors2[all_authors2 == "netherlands"] <- "The Netherlands"
+all_authors_table <- formattable(all_authors2,
+            list(
+              `Frequency` = color_bar(customBlue)
+            ))
+all_authors_table                   
+                   
+```
+# Ancestries of participants, by number of participants, BC
+
+```{r ancestries.numbers}
+
+ancest <- fread(file = "C://Users//dkj201//Documents//Documents//A Canada//Final figures//ancestry_nums.txt",
+                header = TRUE,
+                colClasses = "numeric") #warnings are for columns that are not able to be coerced to numeric
+
+bcyear <- ancest %>%
+  select(Year, BC_AAC, BC_AF, BC_AME, BC_EAS, BC_AS, BC_EUR, BC_LAT, BC_NEA, BC_OCE, BC_SAS, BC_SSA, BC_NS)
+
+#remove NAs
+bcyear <- na.omit(bcyear)
+
+#need to melt it tidy
+molten_bcyear <- melt(bcyear, id.vars = "Year")
+
+#BD code
+bcyear <- molten_bcyear %>%
+  rename(BC_ancestry = variable, BC_sample_size = value) %>%
+  group_by(BC_ancestry) %>%
+  filter(sum(BC_sample_size) > 0)
+bcyear_all <- bcyear %>%
+  group_by(Year, BC_ancestry) %>%
+  summarise(BC_sample_size = sum(BC_sample_size)) %>%
+  group_by(BC_ancestry) %>%
+  mutate(cumulative_sum = cumsum(BC_sample_size))
+
+#plotting
+pal <- brewer.pal(n = 12, "Set3")
+
+bcyear_plot <- ggplot(bcyear_all, aes(x = Year, y = cumulative_sum, fill = BC_ancestry)) +
+  geom_area(position = "stack", alpha = 0.85) +
+  theme_bw() +
+  ylab("") +
+  scale_fill_manual(values = pal, name = "BC Ancestry",
+                    labels = c("African American\nAfro Caribbean",
+                             "East Asian",
+                             "European",
+                             "Latino",
+                             "Near Eastern",
+                             "Central South Asian",
+                             "Not specified")) +
+  theme(axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        title = element_text(hjust = 0.5)) +
+  labs(title = "Base cohort ancestries over time (numbers)")
+bcyear_plot
+
+ggsave("C://Users//dkj201//Documents//Documents//A Canada//Final figures//bcyear_plot_nums.png",
+       plot = bcyear_plot)
+
+
+```
+
+Same plot, excluding European:
+```{r ancestries.noeuropean.numbers}
+ancest <- fread(file = "C://Users//dkj201//Documents//Documents//A Canada//Final figures//ancestry_nums.txt",
+                header = TRUE,
+                colClasses = "numeric") #warnings are for columns that are not able to be coerced to numeric
+
+bcyear.noeur <- ancest %>%
+  select(Year, BC_AAC, BC_AF, BC_AME, BC_EAS, BC_AS, BC_LAT, BC_NEA, BC_OCE, BC_SAS, BC_SSA, BC_NS)
+
+#remove NAs
+bcyear.noeur <- na.omit(bcyear.noeur)
+
+#need to melt it tidy
+molten_bcyear.noeur <- melt(bcyear.noeur, id.vars = "Year")
+
+#BD code
+bcyear.noeur <- molten_bcyear.noeur %>%
+  rename(BC_ancestry = variable, BC_sample_size = value) %>%
+  group_by(BC_ancestry) %>%
+  filter(sum(BC_sample_size) > 0)
+bcyear_all.noeur <- bcyear.noeur %>%
+  group_by(Year, BC_ancestry) %>%
+  summarise(BC_sample_size = sum(BC_sample_size)) %>%
+  group_by(BC_ancestry) %>%
+  mutate(cumulative_sum = cumsum(BC_sample_size))
+
+#plotting
+pal <- brewer.pal(n = 12, "Set3")
+
+
+bcyear_plot.noeur <- ggplot(bcyear_all.noeur, aes(x = Year, y = cumulative_sum, fill = BC_ancestry)) +
+  geom_area(position = "stack", alpha = 0.85) +
+  theme_bw() +
+  ylab("") +
+  scale_fill_manual(values = c("#9EDACF","#FFFFBE", "#FC9387", "#93BDDA","#FDBF79","#BEE37F"), 
+                    name = "BC Ancestry",
+                    labels = c("African American\nAfro Caribbean",
+                             "East Asian",
+                             "Latino",
+                             "Near Eastern",
+                             "Central South Asian",
+                             "Not specified")
+                    ) +
+  theme(axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        title = element_text(hjust = 0.5)) +
+  labs(title = "Base cohort ancestries over time (numbers) without European populations")
+bcyear_plot.noeur
+
+ggsave(file = "C://Users//dkj201//Documents//Documents//A Canada//Final figures//bcyear_plot_nums_noeur.png",
+       plot = bcyear_plot.noeur)
+```
+
+# Ancestries of participants, by proportion of participants,BC
+
+```{r ancestries.proportions.bc}
+ancest <- fread(file = "C://Users//dkj201//Documents//Documents//A Canada//Final figures//ancestry_nums.txt",
+                header = TRUE,
+                colClasses = "numeric") #warnings are for columns that are not able to be coerced to numeric
+
+bcyear.prop <- ancest %>%
+  select(Year, `BC sample size`, BC_AAC, BC_AF, BC_AME, BC_EAS, BC_AS, BC_EUR, BC_LAT, BC_NEA, BC_OCE, BC_SAS, BC_SSA, BC_NS) %>%
+  rename(BC_sample_size = `BC sample size`)
+
+bcyear.prop$BC_AAC <- bcyear.prop$BC_AAC/bcyear.prop$BC_sample_size
+bcyear.prop$BC_AF <- bcyear.prop$BC_AF/bcyear.prop$BC_sample_size
+bcyear.prop$BC_AME <- bcyear.prop$BC_AME/bcyear.prop$BC_sample_size
+bcyear.prop$BC_EAS <- bcyear.prop$BC_EAS/bcyear.prop$BC_sample_size
+bcyear.prop$BC_AS <- bcyear.prop$BC_AS/bcyear.prop$BC_sample_size
+bcyear.prop$BC_EUR <- bcyear.prop$BC_EUR/bcyear.prop$BC_sample_size
+bcyear.prop$BC_LAT <- bcyear.prop$BC_LAT/bcyear.prop$BC_sample_size
+bcyear.prop$BC_NEA <- bcyear.prop$BC_NEA/bcyear.prop$BC_sample_size
+bcyear.prop$BC_OCE <- bcyear.prop$BC_OCE/bcyear.prop$BC_sample_size
+bcyear.prop$BC_SAS <- bcyear.prop$BC_SAS/bcyear.prop$BC_sample_size
+bcyear.prop$BC_SSA <- bcyear.prop$BC_SSA/bcyear.prop$BC_sample_size
+bcyear.prop$BC_NS <- bcyear.prop$BC_NS/bcyear.prop$BC_sample_size
+
+#remove NAs
+bcyear.prop <- na.omit(bcyear.prop)
+
+#need to melt it tidy
+molten_bcyear.prop <- melt(bcyear.prop, id.vars = "Year")
+
+#BD code
+bcyear.prop <- molten_bcyear.prop %>%
+  rename(BC_ancestry = variable, BC_sample_size = value) %>%
+  group_by(BC_ancestry) %>%
+  filter(sum(BC_sample_size) > 0)
+bcyear_all.prop <- bcyear.prop %>%
+  group_by(Year, BC_ancestry) %>%
+  summarise(BC_sample_size = sum(BC_sample_size)) %>%
+  group_by(BC_ancestry) %>%
+  mutate(cumulative_sum = cumsum(BC_sample_size)) %>%
+  filter(BC_ancestry != "BC_sample_size") %>%
+  arrange(cumulative_sum)
+
+#plotting
+pal <- brewer.pal(n = 12, "Set3")
+
+#sort largest to smallest
+bcyear_all.prop$BC_ancestry <- factor(bcyear_all.prop$BC_ancestry, levels = c(
+  "BC_EUR", "BC_EAS", "BC_AAC", "BC_SAS", "BC_LAT", "BC_NEA", "BC_NS"
+))
+
+bcyear_plot.prop <- ggplot(bcyear_all.prop, aes(x = Year, y = cumulative_sum, fill = BC_ancestry)) +
+  geom_area(position = "stack", alpha = 0.85) +
+  theme_bw() +
+  ylab("") +
+  scale_fill_manual(values = pal, name = "BC Ancestry",
+                    labels = c("European",
+                               "East Asian",
+                               "African American\nAfro Caribbean",
+                               "Central South Asian",
+                               "Latino",
+                               "Near Eastern",
+                               "Not specified")) +
+  theme(axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        title = element_text(hjust = 0.5),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 10)) +
+  scale_y_continuous(limits = c(0,60)) +
+  scale_x_continuous(breaks = c(2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021)) +
+  labs(title = "Base cohort ancestries over time (proportions)",
+       y = "Proportion ancestry of total participants")
+bcyear_plot.prop
+
+ggsave("C://Users//dkj201//Documents//Documents//A Canada//Final figures//bcyear_plot_props.png",
+       plot = bcyear_plot.prop)
+
+```
+
+Same plot, without European:
+```{r ancestries.proportions.noeur}
+ancest <- fread(file = "C://Users//dkj201//Documents//Documents//A Canada//Final figures//ancestry_nums.txt",
+                header = TRUE,
+                colClasses = "numeric") #warnings are for columns that are not able to be coerced to numeric
+
+bcyear.prop.noeur <- ancest %>%
+  select(Year, `BC sample size`, BC_AAC, BC_AF, BC_AME, BC_EAS, BC_AS, BC_LAT, BC_NEA, BC_OCE, BC_SAS, BC_SSA, BC_NS) %>%
+  rename(BC_sample_size = `BC sample size`)
+
+bcyear.prop.noeur$BC_AAC <- bcyear.prop.noeur$BC_AAC/bcyear.prop.noeur$BC_sample_size
+bcyear.prop.noeur$BC_AF <- bcyear.prop.noeur$BC_AF/bcyear.prop.noeur$BC_sample_size
+bcyear.prop.noeur$BC_AME <- bcyear.prop.noeur$BC_AME/bcyear.prop.noeur$BC_sample_size
+bcyear.prop.noeur$BC_EAS <- bcyear.prop.noeur$BC_EAS/bcyear.prop.noeur$BC_sample_size
+bcyear.prop.noeur$BC_AS <- bcyear.prop.noeur$BC_AS/bcyear.prop.noeur$BC_sample_size
+bcyear.prop.noeur$BC_LAT <- bcyear.prop.noeur$BC_LAT/bcyear.prop.noeur$BC_sample_size
+bcyear.prop.noeur$BC_NEA <- bcyear.prop.noeur$BC_NEA/bcyear.prop.noeur$BC_sample_size
+bcyear.prop.noeur$BC_OCE <- bcyear.prop.noeur$BC_OCE/bcyear.prop.noeur$BC_sample_size
+bcyear.prop.noeur$BC_SAS <- bcyear.prop.noeur$BC_SAS/bcyear.prop.noeur$BC_sample_size
+bcyear.prop.noeur$BC_SSA <- bcyear.prop.noeur$BC_SSA/bcyear.prop.noeur$BC_sample_size
+bcyear.prop.noeur$BC_NS <- bcyear.prop.noeur$BC_NS/bcyear.prop.noeur$BC_sample_size
+
+#remove NAs
+bcyear.prop.noeur <- na.omit(bcyear.prop.noeur)
+
+#need to melt it tidy
+molten_bcyear.prop.noeur <- melt(bcyear.prop.noeur, id.vars = "Year")
+
+#BD code
+bcyear.prop.noeur <- molten_bcyear.prop.noeur %>%
+  rename(BC_ancestry = variable, BC_sample_size = value) %>%
+  group_by(BC_ancestry) %>%
+  filter(sum(BC_sample_size) > 0)
+bcyear_all.prop.noeur <- bcyear.prop.noeur %>%
+  group_by(Year, BC_ancestry) %>%
+  summarise(BC_sample_size = sum(BC_sample_size)) %>%
+  group_by(BC_ancestry) %>%
+  mutate(cumulative_sum = cumsum(BC_sample_size)) %>%
+  filter(BC_ancestry != "BC_sample_size")
+
+#plotting
+pal <- brewer.pal(n = 12, "Set3")
+
+bcyear_plot.prop.noeur <- ggplot(bcyear_all.prop.noeur, aes(x = Year, y = cumulative_sum, fill = BC_ancestry)) +
+  geom_area(position = "stack", alpha = 0.85) +
+  theme_bw() +
+  ylab("") +
+  scale_fill_manual(values = c("#9EDACF","#FFFFBE", "#FC9387", "#93BDDA","#FDBF79","#BEE37F"),
+                    labels = c("African American\nAfro Caribbean",
+                             "East Asian",
+                             "Latino",
+                             "Near Eastern",
+                             "Central South Asian",
+                             "Not specified")) +
+  theme(axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        title = element_text(hjust = 0.5)) +
+  scale_y_continuous(limits = c(0,5)) +
+  labs(title = "Base cohort ancestries over time (proportions) without European population")
+bcyear_plot.prop.noeur
+
+ggsave("C://Users//dkj201//Documents//Documents//A Canada//Final figures//bcyear_plot_props_noeur.png",
+       plot = bcyear_plot.prop.noeur)
+```
+
+We will keep proportions of ancestries as final figure
+
+#Proportion ancestries, TC
+
+```{r ancestries.proportions.tc}
+ancest <- fread(file = "C://Users//dkj201//Documents//Documents//A Canada//Final figures//ancestry_nums.txt",
+                header = TRUE,
+                colClasses = "numeric") #warnings are for columns that are not able to be coerced to numeric
+
+tcyear.prop <- ancest %>%
+  select(Year, `TC sample size`, TC_AAC, TC_AF, TC_AME, TC_EAS, TC_AS, TC_EUR, TC_LAT, TC_NEA, TC_OCE, TC_SAS, TC_SSA, TC_NS) %>%
+  rename(TC_sample_size = `TC sample size`)
+
+tcyear.prop$TC_AAC <- tcyear.prop$TC_AAC/tcyear.prop$TC_sample_size
+tcyear.prop$TC_AF <- tcyear.prop$TC_AF/tcyear.prop$TC_sample_size
+tcyear.prop$TC_AME <- tcyear.prop$TC_AME/tcyear.prop$TC_sample_size
+tcyear.prop$TC_EAS <- tcyear.prop$TC_EAS/tcyear.prop$TC_sample_size
+tcyear.prop$TC_AS <- tcyear.prop$TC_AS/tcyear.prop$TC_sample_size
+tcyear.prop$TC_EUR <- tcyear.prop$TC_EUR/tcyear.prop$TC_sample_size
+tcyear.prop$TC_LAT <- tcyear.prop$TC_LAT/tcyear.prop$TC_sample_size
+tcyear.prop$TC_NEA <- tcyear.prop$TC_NEA/tcyear.prop$TC_sample_size
+tcyear.prop$TC_OCE <- tcyear.prop$TC_OCE/tcyear.prop$TC_sample_size
+tcyear.prop$TC_SAS <- tcyear.prop$TC_SAS/tcyear.prop$TC_sample_size
+tcyear.prop$TC_SSA <- tcyear.prop$TC_SSA/tcyear.prop$TC_sample_size
+tcyear.prop$TC_NS <- tcyear.prop$TC_NS/tcyear.prop$TC_sample_size
+
+#remove NAs
+tcyear.prop <- na.omit(tcyear.prop)
+
+#need to melt it tidy
+molten_tcyear.prop <- melt(tcyear.prop, id.vars = "Year")
+
+#BD code
+tcyear.prop <- molten_tcyear.prop %>%
+  rename(TC_ancestry = variable, TC_sample_size = value) %>%
+  group_by(TC_ancestry) %>%
+  filter(sum(TC_sample_size) > 0)
+tcyear_all.prop <- tcyear.prop %>%
+  group_by(Year, TC_ancestry) %>%
+  summarise(TC_sample_size = sum(TC_sample_size)) %>%
+  group_by(TC_ancestry) %>%
+  mutate(cumulative_sum = cumsum(TC_sample_size)) %>%
+  filter(TC_ancestry != "TC_sample_size") %>%
+  arrange(cumulative_sum)
+
+
+#plotting
+pal <- brewer.pal(n = 12, "Set3")
+
+#sort largest to smallest
+tcyear_all.prop$TC_ancestry <- factor(tcyear_all.prop$TC_ancestry, levels = c(
+  "TC_EUR", "TC_EAS", "TC_LAT", "TC_AS", "TC_AAC", "TC_AF", "TC_SAS", "TC_NS"
+))
+
+tcyear_plot.prop <- ggplot(tcyear_all.prop, aes(x = Year, y = cumulative_sum, fill = TC_ancestry)) +
+  geom_area(position = "stack", alpha = 0.85) +
+  theme_bw() +
+  scale_fill_manual(values = c("#9EDACF",
+                               "#FFFFBE",
+                               "#93BDDA",
+                               "forestgreen",
+                               "#C8C4E0",
+                               "red",
+                               "#FC9387",
+                               "#BEE37F"),
+                    name = "TC Ancestry",
+                    labels = c("European",
+                               "East Asian",
+                               "Latino",
+                               "Asian",
+                               "African American\nAfro Caribbean",
+                               "African",
+                               "Central South Asian",
+                               "Not specified")) +
+  theme(axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 10, face = "bold"),
+        title = element_text(hjust = 0.5),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 10)) +
+  scale_y_continuous(limits = c(0,50)) +
+  scale_x_continuous(breaks = c(2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021)) +
+  labs(title = "Target cohort ancestries over time (proportions)",
+       y = "Proportion ancestry of total participants")
+tcyear_plot.prop
+
+ggsave("C://Users//dkj201//Documents//Documents//A Canada//Final figures//tcyear_plot_props.png",
+       plot = tcyear_plot.prop)
+
+```
+
+Into final figure using cowplot:
+
+```{r cowplot ancestries}
+ancest_combo <- plot_grid(bcyear_plot.prop, NULL, tcyear_plot.prop, labels = c("A", "", "B"),
+                    nrow = 1,
+                    ncol = 3,
+          align = "h",
+          rel_widths = c(1,0.1,1))
+ancest_combo
+
+ggsave(file = "C://Users//dkj201//Documents//Documents//A Canada//Final figures//ancest_combo.png",
+       plot = ancest_combo,
+       width = 45,
+       height = 20,
+       units = "cm",
+       dpi = 320)
+
+```
+
+```{r sample sizes}
+samplesize <- df %>%
+  select(`BC.sample.size`, `TC.sample.size`, `Disease.area`)
+
+
+
+```
